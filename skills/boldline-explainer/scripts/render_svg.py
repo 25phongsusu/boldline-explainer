@@ -148,19 +148,25 @@ def make_sfx(kind: str, sr: int = 44100) -> np.ndarray:
     return ((np.sin(2 * np.pi * 880 * t) + 0.5 * np.sin(2 * np.pi * 1318.5 * t)) * env * 0.25).astype(np.float32)
 
 
-def make_bgm(total_sec: float, sr: int = 44100) -> np.ndarray:
-    n = int(total_sec * sr)
+def make_bgm_segments(scene_durs: list[float], moods: list[str], sr: int = 44100) -> np.ndarray:
+    """Dynamic BGM: tense minor progression for problem scenes, bright major for solutions."""
+    chunks = []
+    bright_notes = [349.23, 440.00, 523.25, 440.00, 392.00, 493.88, 587.33, 493.88]
+    tense_notes = [293.66, 349.23, 415.30, 349.23, 277.18, 349.23, 415.30, 349.23]
     beat_dur = 60.0 / 110.0 / 2.0
-    notes = [349.23, 440.00, 523.25, 440.00, 392.00, 493.88, 587.33, 493.88]
-    sig = np.zeros(n, dtype=np.float32)
     step = int(beat_dur * sr)
-    for i, start in enumerate(range(0, n, step)):
-        end = min(start + step, n)
-        lt = np.linspace(0, (end - start) / sr, end - start, endpoint=False)
-        f = notes[i % len(notes)]
-        env = np.exp(-lt * 5.0) * np.minimum(1.0, lt / 0.015)
-        sig[start:end] += (np.sin(2 * np.pi * f * lt) + 0.2 * np.sin(2 * np.pi * f * 2 * lt)) * env * 0.075
-    return sig
+    for dur, mood in zip(scene_durs, moods):
+        n = int(dur * sr)
+        sig = np.zeros(n, dtype=np.float32)
+        notes = tense_notes if mood == "tense" else bright_notes
+        for i, start in enumerate(range(0, n, step)):
+            end = min(start + step, n)
+            lt = np.linspace(0, (end - start) / sr, end - start, endpoint=False)
+            f = notes[i % len(notes)]
+            env = np.exp(-lt * 5.0) * np.minimum(1.0, lt / 0.015)
+            sig[start:end] += (np.sin(2 * np.pi * f * lt) + 0.2 * np.sin(2 * np.pi * f * 2 * lt)) * env * 0.075
+        chunks.append(sig)
+    return np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
 
 
 HTML_SHELL = """<!DOCTYPE html>
@@ -222,6 +228,16 @@ function esc(s) {
 
 function bgSVG(kind, W, H, lt) {
   const fy = Math.round(H * 0.735);
+  if (kind === 'split_screen') {
+    return `
+      <rect x="0" y="0" width="${W/2}" height="${H}" fill="#cbd5e1"/>
+      <rect x="${W/2}" y="0" width="${W/2}" height="${H}" fill="#fef3c7"/>
+      <rect x="0" y="${fy}" width="${W/2}" height="${H-fy}" fill="#94a3b8"/>
+      <rect x="${W/2}" y="${fy}" width="${W/2}" height="${H-fy}" fill="#d97706" opacity="0.35"/>
+      <line x1="${W/2}" y1="160" x2="${W/2}" y2="${fy}" stroke="#111827" stroke-width="6" stroke-dasharray="14 10"/>
+      <rect x="0" y="${fy-10}" width="${W}" height="18" fill="#64748b" stroke="#111827" stroke-width="4"/>
+    `;
+  }
   if (kind === 'dark_card') {
     const sw = 18 * Math.sin(lt * 1.4);
     return `
@@ -315,8 +331,36 @@ function bgSVG(kind, W, H, lt) {
   `;
 }
 
+function reactionSVG(kind, lt) {
+  if (!kind) return '';
+  const bob = 5 * Math.sin(lt * 7);
+  if (kind === 'sweat') {
+    return `<g transform="translate(76,-88)"><path d="M0,${-14+bob} Q12,6 0,16 Q-12,6 0,${-14+bob} Z" fill="#38bdf8" stroke="#0284c7" stroke-width="3"/></g>`;
+  }
+  if (kind === 'lightbulb') {
+    return `<g transform="translate(78,-105)"><circle cx="0" cy="0" r="18" fill="#fde047" stroke="#111827" stroke-width="3.5"/><rect x="-7" y="16" width="14" height="8" fill="#94a3b8" stroke="#111827" stroke-width="2.5"/><line x1="0" y1="-28" x2="0" y2="-22" stroke="#facc15" stroke-width="4"/><line x1="22" y1="-16" x2="27" y2="-20" stroke="#facc15" stroke-width="4"/><line x1="-22" y1="-16" x2="-27" y2="-20" stroke="#facc15" stroke-width="4"/></g>`;
+  }
+  if (kind === 'question') {
+    return `<g transform="translate(74,-98) scale(${1+0.08*Math.sin(lt*6)})"><text x="0" y="10" text-anchor="middle" font-size="44" font-weight="900" fill="#3b82f6" stroke="#ffffff" stroke-width="5" paint-order="stroke fill">?</text></g>`;
+  }
+  if (kind === 'exclaim') {
+    return `<g transform="translate(74,-98) scale(${1+0.08*Math.sin(lt*8)})"><text x="0" y="10" text-anchor="middle" font-size="44" font-weight="900" fill="#ef4444" stroke="#ffffff" stroke-width="5" paint-order="stroke fill">!</text></g>`;
+  }
+  if (kind === 'heart') {
+    return `<g transform="translate(74,${-98+bob})"><path d="M0,14 C-18,2 -18,-14 -7,-14 C-2,-14 0,-9 0,-6 C0,-9 2,-14 7,-14 C18,-14 18,2 0,14 Z" fill="#f43f5e" stroke="#111827" stroke-width="3"/></g>`;
+  }
+  return '';
+}
+
 function characterSVG(cfg, actor, lt, mouthAmp, W, H) {
-  const cx = actor.x * W;
+  let cx = actor.x * W;
+  if (actor.enter_from === 'left' && lt < 0.45) {
+    const p = 1 - Math.pow(1 - lt / 0.45, 3);
+    cx = -100 + (actor.x * W + 100) * p;
+  } else if (actor.enter_from === 'right' && lt < 0.45) {
+    const p = 1 - Math.pow(1 - lt / 0.45, 3);
+    cx = (W + 100) + (actor.x * W - (W + 100)) * p;
+  }
   const s = actor.scale || 1.0;
   const speaking = actor.speaking && mouthAmp > 0.12;
   const bob = speaking ? 3.5 * mouthAmp * Math.sin(lt * 9) : 1.5 * Math.sin(lt * 2);
@@ -422,6 +466,7 @@ function characterSVG(cfg, actor, lt, mouthAmp, W, H) {
       ${eyes}
       ${glasses}
       ${mouth}
+      ${reactionSVG(actor.reaction, lt)}
     </g>
   `;
 }
@@ -528,6 +573,13 @@ window.renderState = function(st) {
     uiHTML += `<line x1="${W*0.16}" y1="${ty+30}" x2="${W*0.84}" y2="${ty+30}" stroke="#facc15" stroke-width="7" stroke-linecap="round"/>`;
   }
 
+  if (sc.callout && lt >= (st.calloutDelay ?? (sc.callout.delay || 0))) {
+    const cdt = lt - (st.calloutDelay ?? (sc.callout.delay || 0));
+    const cs = 1.0 + 0.16 * Math.sin(Math.min(cdt, 0.25) / 0.25 * Math.PI);
+    const cx = (sc.callout.x ?? 0.5) * W, cy = (sc.callout.y ?? 0.36) * H;
+    uiHTML += `<g transform="translate(${cx},${cy}) rotate(-4) scale(${cs})" filter="url(#softShadow)"><text x="0" y="0" text-anchor="middle" font-size="60" font-weight="900" fill="#facc15" stroke="#111827" stroke-width="10" paint-order="stroke fill">${esc(sc.callout.text)}</text></g>`;
+  }
+
   if (sc.label && lt >= (labelDelay ?? (sc.label.delay || 0))) {
     const lx = sc.label.x * W, ly = sc.label.y * H;
     const pw = Math.max(190, sc.label.text.length * 14 + 48);
@@ -612,13 +664,15 @@ async def build(script_path: Path, out_path: Path, preview_only: bool):
     work_dir.mkdir(parents=True, exist_ok=True)
     sr = 44100
     scene_durs, wav_arrays, sfx_events = [], [], []
-    all_word_timings, all_prop_delays, all_label_delays, frame_rms_envs = [], [], [], []
+    all_word_timings, all_prop_delays, all_label_delays, all_callout_delays, frame_rms_envs = [], [], [], [], []
+    bgm_moods = []
     cur_sample = 0
 
     for sc in spec["scenes"]:
         wav_path, audio_dur, word_timings = await gen_tts_for_scene(sc, voice, lang, work_dir)
         dur = round(audio_dur + 0.55, 2)
         scene_durs.append(dur)
+        bgm_moods.append(sc.get("bgm_mood", "tense" if sc.get("background") in ("spotlight", "dark_card") and sc["id"] <= 3 else "bright"))
         all_word_timings.append(word_timings)
         with wave.open(str(wav_path), "rb") as w:
             raw = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
@@ -647,13 +701,18 @@ async def build(script_path: Path, out_path: Path, preview_only: bool):
             if prop.get("trigger_word"):
                 sfx_events.append((cur_sample + int(d * sr), prop.get("sfx", "pop")))
         all_prop_delays.append(p_delays)
-        all_label_delays.append(resolve_trigger_delay(sc["label"], word_timings) if sc.get("label") else None)
+        ld = resolve_trigger_delay(sc["label"], word_timings) if sc.get("label") else None
+        all_label_delays.append(ld)
+        cd = resolve_trigger_delay(sc["callout"], word_timings) if sc.get("callout") else None
+        if sc.get("callout") and sc["callout"].get("trigger_word"):
+            sfx_events.append((cur_sample + int(cd * sr), "ding"))
+        all_callout_delays.append(cd)
         cur_sample += target_len
 
     voice_full = np.concatenate(wav_arrays)
     mix = voice_full * 0.9
     if spec.get("bgm", True):
-        mix = mix + make_bgm(len(voice_full) / sr, sr)
+        mix = mix + make_bgm_segments(scene_durs, bgm_moods, sr)[:len(voice_full)]
     for pos, kind in sfx_events:
         s = make_sfx(kind, sr)
         end = min(pos + len(s), len(mix))
@@ -716,6 +775,7 @@ async def build(script_path: Path, out_path: Path, preview_only: bool):
                     "chars": spec.get("characters", {}), "words": all_word_timings[idx],
                     "mouthAmp": env[f_idx] if f_idx < len(env) else 0.0,
                     "propDelays": all_prop_delays[idx], "labelDelay": all_label_delays[idx],
+                    "calloutDelay": all_callout_delays[idx],
                 })
                 png = await page.screenshot(type="png")
                 frame = Image.open(BytesIO(png)).convert("RGB")
