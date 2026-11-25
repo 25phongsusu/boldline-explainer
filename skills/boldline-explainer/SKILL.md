@@ -44,3 +44,17 @@ You are a programmatic 2D animation director and asset builder. Given a topic, b
 | `references/schema.md` | Writing or validating a JSON video script |
 | `references/visual-style.md` | Designing new characters, backgrounds, props, or colour palettes |
 | `references/layout-rules.md` | Adding new UI/text elements or debugging bounding-box overlaps |
+
+## Script-Writing Rules (Mandatory Liveliness)
+
+Whenever you generate a new JSON script from a user topic, you MUST enforce these rules **while writing the script** (not just at render time):
+
+1. **1 Beat = 1 Concrete Visual**: Never leave a content scene with just a character standing next to a text pill. Map every key noun/verb in the narration to at least one illustrative `prop`, `polaroid`, or `arrow`. If `scripts/render_video.py` does not yet have a prop for the new topic, **write a new `draw_prop` branch** (or embed an OpenMoji / Open Peeps asset) before rendering.
+2. **Scene & Camera Cadence**:
+   - Alternate `background` every content scene (never repeat the same background back-to-back).
+   - Alternate framing between wide (`scale: 0.90`, 2 actors or actor + props) and medium close-up (`scale: 1.18–1.25`).
+   - Insert a `dark_card` chapter divider every 2–3 content scenes to reset viewer attention.
+3. **External Free Asset Libraries (when custom code-drawing is too complex)**:
+   - **Characters**: Open Peeps (`openpeeps.com`, CC0), Open Doodles (`opendoodles.com`, CC0), Humaaans (`humaaans.com`).
+   - **Bold-Outline Props & Objects**: OpenMoji (`openmoji.org`, CC BY-SA 4.0 — thousands of bold-outline flat-colour icons for food, medicine, tech, organs, objects), Tabler Icons (MIT).
+   - **Real Photos (`ẢNH THẬT`)**: Wikimedia Commons (Public Domain / CC) via `polaroid.image`.
