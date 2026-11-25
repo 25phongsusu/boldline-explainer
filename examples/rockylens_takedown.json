@@ -1,0 +1,119 @@
+{
+  "title": "Rockylens Fake Site Takedown",
+  "aspect": "9:16",
+  "fps": 30,
+  "lang": "vi",
+  "voice": "vi-VN-NamMinhNeural",
+  "bgm": true,
+  "characters": {
+    "emp": {
+      "shirt_color": "#1e3a5f",
+      "hair_color": "#1f2937",
+      "glasses": true,
+      "badge": true,
+      "tie": false
+    },
+    "it": {
+      "shirt_color": "#4b5563",
+      "hair_color": "#9ca3af",
+      "glasses": false,
+      "badge": false,
+      "tie": true
+    }
+  },
+  "scenes": [
+    {
+      "id": 1,
+      "background": "dark_card",
+      "top_text": "Chuyện vừa xảy ra tại Rockylens...",
+      "title": "WEB GIẢ MẠO?",
+      "text": "Một nhân viên Rockylens vừa vô tình phát hiện ra điều bất ngờ khi lướt web.",
+      "sfx": "whoosh"
+    },
+    {
+      "id": 2,
+      "background": "office",
+      "title": "GIỜ NGHỈ TRƯA",
+      "text": "Trong giờ nghỉ trưa, anh gõ nhầm tên công ty lên Google và thấy một trang web lạ hoắc.",
+      "sfx": "pop",
+      "actors": [
+        { "id": "emp", "x": 0.30, "y": 0.58, "mood": "determined", "arm_pose": "point_right", "speaking": true }
+      ],
+      "label": { "text": "Gõ nhầm tên miền", "x": 0.67, "y": 0.50, "delay": 0.8 }
+    },
+    {
+      "id": 3,
+      "background": "spotlight",
+      "title": "CẢNH BÁO LỪA ĐẢO",
+      "text": "Giao diện giống hệt Rockylens, nhưng lại treo bảng giảm giá sốc và đòi nhập thẻ ngân hàng.",
+      "sfx": "pop",
+      "actors": [
+        { "id": "emp", "x": 0.24, "y": 0.59, "mood": "shocked", "arm_pose": "raised", "speaking": true, "scale": 0.95 }
+      ],
+      "label": { "text": "rocky-lens-promo.xyz", "x": 0.69, "y": 0.32, "delay": 0.5 },
+      "polaroid": {
+        "x": 0.46,
+        "y": 0.38,
+        "url": "rocky-lens-promo.xyz",
+        "headline": "GIẢM GIÁ 90%!!",
+        "cta": "NHẬP THẺ NGAY",
+        "caption": "Ảnh chụp bằng chứng",
+        "stamp": "GIẢ MẠO",
+        "stamp_color": "#dc2626",
+        "stamp_delay": 1.6
+      }
+    },
+    {
+      "id": 4,
+      "background": "dark_card",
+      "top_text": "Phản ứng cực nhanh",
+      "title": "CHỤP LẠI & BÁO NGAY!",
+      "text": "Không chần chừ, anh chụp màn hình lại toàn bộ đường link và báo ngay cho bộ phận kỹ thuật.",
+      "sfx": "whoosh"
+    },
+    {
+      "id": 5,
+      "background": "office",
+      "title": "XÁC MINH & TỐ CÁO",
+      "text": "Chỉ sau vài phút xác minh, đội ngũ Rockylens lập tức gửi đơn tố cáo lên nhà cung cấp tên miền và Google.",
+      "sfx": "pop",
+      "actors": [
+        { "id": "emp", "x": 0.26, "y": 0.58, "mood": "determined", "arm_pose": "point_right", "speaking": true, "scale": 0.92 },
+        { "id": "it", "x": 0.74, "y": 0.58, "mood": "determined", "arm_pose": "down", "speaking": false, "scale": 0.92 }
+      ],
+      "arrow": { "x0": 0.37, "x1": 0.65, "y": 0.46, "color": "#22c55e" },
+      "label": { "text": "Gửi Google & Nhà mạng", "x": 0.50, "y": 0.37, "delay": 0.6 }
+    },
+    {
+      "id": 6,
+      "background": "office",
+      "title": "ĐÃ XỬ LÝ XONG",
+      "text": "Trang web giả mạo nhanh chóng bị gắn cảnh báo đỏ và gỡ bỏ, bảo vệ hàng trăm khách hàng khỏi bẫy lừa đảo.",
+      "sfx": "ding",
+      "actors": [
+        { "id": "emp", "x": 0.25, "y": 0.59, "mood": "happy", "arm_pose": "raised", "speaking": true, "scale": 0.92 }
+      ],
+      "label": { "text": "An toàn rồi!", "x": 0.24, "y": 0.41, "delay": 0.5 },
+      "polaroid": {
+        "x": 0.48,
+        "y": 0.38,
+        "url": "rocky-lens-promo.xyz",
+        "headline": "GIẢM GIÁ 90%!!",
+        "cta": "NHẬP THẺ NGAY",
+        "caption": "Ảnh chụp bằng chứng",
+        "stamp": "ĐÃ GỠ BỎ",
+        "stamp_color": "#16a34a",
+        "stamp_delay": 0.0
+      }
+    },
+    {
+      "id": 7,
+      "background": "dark_card",
+      "top_text": "Nhắn nhủ từ Rockylens",
+      "title": "KIỂM TRA KỸ TÊN MIỀN!",
+      "badge_text": "rockylens.com",
+      "text": "Luôn kiểm tra kỹ tên miền chính thức trước khi giao dịch bạn nhé.",
+      "sfx": "ding"
+    }
+  ]
+}
