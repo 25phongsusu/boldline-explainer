@@ -223,6 +223,12 @@ def draw_bg(draw: ImageDraw.ImageDraw, kind: str, W: int, H: int, t: float):
         draw.rectangle([0, 0, W, floor_y], fill="#fde68a")
         draw.rectangle([int(W * 0.05), floor_y - 95, int(W * 0.95), floor_y + 10], fill="#dc2626", outline="#111827", width=5)
         draw.rectangle([int(W * 0.05), floor_y - 95, int(W * 0.95), floor_y - 75], fill="#ffffff", outline="#111827", width=3)
+    elif kind == "kids_room":
+        draw.rectangle([0, 0, W, floor_y], fill="#fef9c3")
+        # Alphabet banner / chalkboard
+        bx0, by0, bx1, by1 = int(W * 0.16), int(H * 0.18), int(W * 0.84), int(H * 0.40)
+        draw.rectangle([bx0, by0, bx1, by1], fill="#14532d", outline="#78350f", width=8)
+        draw_outlined_text(draw, ((bx0 + bx1) // 2, (by0 + by1) // 2), "A  B  C  •  TOPO", FONT_LABEL, "#fde047", outline="#14532d", stroke=0)
     elif kind == "spotlight":
         draw.rectangle([0, 0, W, floor_y], fill="#e6e1c5")
         draw.polygon([(int(W * 0.33), 0), (int(W * 0.67), 0), (int(W * 0.90), floor_y), (int(W * 0.10), floor_y)], fill="#f4f0dc")
@@ -357,6 +363,28 @@ def draw_prop(draw: ImageDraw.ImageDraw, prop: dict, W: int, H: int, lt: float, 
         draw.ellipse([cx - 34, cy - 34, cx + 34, cy + 34], fill="#fef08a", outline="#111827", width=4)
         draw.line([(cx, cy), (cx, cy - 22)], fill="#111827", width=5)
         draw.line([(cx, cy), (cx + 18, cy + 8)], fill="#dc2626", width=5)
+    elif kind == "topo_phone":
+        draw.rounded_rectangle([cx - 26, cy - 42, cx + 26, cy + 42], radius=10, fill="#1e293b", outline="#111827", width=4)
+        draw.rounded_rectangle([cx - 20, cy - 32, cx + 20, cy + 30], radius=6, fill="#38bdf8", outline="#0284c7", width=2)
+        draw_outlined_text(draw, (cx, cy - 4), "TOPO", FONT_SMALL, "#ffffff", outline="#0369a1", stroke=2)
+    elif kind == "abc_blocks":
+        draw.rectangle([cx - 38, cy - 4, cx - 2, cy + 32], fill="#f87171", outline="#111827", width=3)
+        draw.rectangle([cx + 2, cy - 4, cx + 38, cy + 32], fill="#4ade80", outline="#111827", width=3)
+        draw.rectangle([cx - 18, cy - 38, cx + 18, cy - 2], fill="#facc15", outline="#111827", width=3)
+        draw_outlined_text(draw, (cx - 20, cy + 14), "A", FONT_SMALL, "#ffffff", outline="#111827", stroke=2)
+        draw_outlined_text(draw, (cx + 20, cy + 14), "B", FONT_SMALL, "#ffffff", outline="#111827", stroke=2)
+        draw_outlined_text(draw, (cx, cy - 20), "C", FONT_SMALL, "#111827", outline="#ffffff", stroke=1)
+    elif kind == "mic_speak":
+        draw.rounded_rectangle([cx - 14, cy - 34, cx + 14, cy + 6], radius=12, fill="#60a5fa", outline="#111827", width=3)
+        draw.arc([cx - 22, cy - 10, cx + 22, cy + 20], 0, 180, fill="#111827", width=4)
+        draw.line([(cx, cy + 20), (cx, cy + 36)], fill="#111827", width=4)
+        draw.line([(cx - 16, cy + 36), (cx + 16, cy + 36)], fill="#111827", width=4)
+    elif kind == "trophy_star":
+        draw.polygon([(cx, cy - 38), (cx + 11, cy - 12), (cx + 38, cy - 10), (cx + 17, cy + 8), (cx + 24, cy + 36), (cx, cy + 20), (cx - 24, cy + 36), (cx - 17, cy + 8), (cx - 38, cy - 10), (cx - 11, cy - 12)], fill="#facc15", outline="#111827", width=3)
+    elif kind == "parent_kid_heart":
+        draw.pieslice([cx - 36, cy - 28, cx, cy + 8], 180, 360, fill="#f43f5e", outline="#111827", width=3)
+        draw.pieslice([cx, cy - 28, cx + 36, cy + 8], 180, 360, fill="#f43f5e", outline="#111827", width=3)
+        draw.polygon([(cx - 36, cy - 8), (cx + 36, cy - 8), (cx, cy + 34)], fill="#f43f5e", outline="#111827", width=3)
 
     if tracker is not None:
         tracker.append((f"prop:{kind}", (cx - r, cy - r, cx + r, cy + r)))
