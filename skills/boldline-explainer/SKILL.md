@@ -9,10 +9,13 @@ You are a programmatic 2D animation director and asset builder. Given a topic, b
 
 ## Core Principles
 
-1. **Zero Text Overlap (Mandatory)**: Every title, label pill, evidence card, stamp, and subtitle MUST pass `assert_no_overlaps` before rendering. Never draw transparent stamps directly over readable text; always use an opaque card/banner zone and dynamically sized label pills. Read `references/layout-rules.md` before writing custom scene renderers.
-2. **Consistent Visual Grammar**: All characters, backgrounds, and props share bold dark outlines (`#111827`), flat colour fills, stick-like limbs with round hands, rosy cheeks, and high-contrast outlined subtitles. See `references/visual-style.md`.
-3. **Speech-Driven Timing**: Never guess fixed durations when TTS is available. Generate TTS per scene first, measure exact audio duration, and set `scene_duration = audio_duration + 0.55s` so narration never clips.
-4. **Custom Assets On Demand**: When a script calls for new characters, backgrounds, or props not yet in `scripts/render_video.py`, extend the renderer with clean procedural vector drawing functions (Pillow/SVG) matching `references/visual-style.md`—or embed real photos (`ẢNH THẬT` polaroid with attribution).
+1. **Zero Text Overlap (Mandatory)**: Every title, label pill, evidence card, stamp, prop, and subtitle MUST pass `assert_no_overlaps` before rendering.
+2. **Mandatory Visual Richness Gate (`assert_visual_richness`)**: The renderer hard-blocks flat/repetitive scripts before encoding:
+   - **No consecutive identical backgrounds**: Two adjacent content scenes cannot share the same `background` (`office`, `clinic`, `dining`, `gut_diagram`, `spotlight`, `forest_hills`).
+   - **>= 70% Visual Props**: At least 70% of content scenes must include illustrative `props` (e.g., `food_greasy`, `milk_ban`, `pill_ban`, `water_glass`, `gut_flora`, `clock_alert`), `polaroid`, or `arrow`.
+   - **Camera Scale Variety**: Mix wide (`scale <= 0.95`) and medium/close-up (`scale >= 1.15`) shots across scenes (`max - min >= 0.2`).
+3. **Preview Before Full Render (`--preview`)**: Always run `python scripts/render_video.py script.json --preview -o preview.jpg` first (~1 second) to inspect all scenes in one contact sheet before rendering the final MP4.
+4. **Speech-Driven Timing**: Never guess fixed durations when TTS is available. Generate TTS per scene first, measure exact audio duration, and set `scene_duration = audio_duration + 0.55s` so narration never clips.
 
 ## Standard Workflow
 

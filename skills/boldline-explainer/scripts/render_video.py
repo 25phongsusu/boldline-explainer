@@ -36,6 +36,9 @@ FONT_STAMP = load_font(38, True)
 async def gen_tts_for_scene(sc: dict, voice: str, lang: str, work_dir: Path):
     mp3_path = work_dir / f"scene_{sc['id']}.mp3"
     wav_path = work_dir / f"scene_{sc['id']}.wav"
+    if wav_path.exists() and wav_path.stat().st_size > 1000:
+        with wave.open(str(wav_path), "rb") as w:
+            return wav_path, w.getnframes() / float(w.getframerate())
     used_gtts = False
     try:
         comm = edge_tts.Communicate(sc["text"], voice)
@@ -125,7 +128,24 @@ def draw_bg(draw: ImageDraw.ImageDraw, kind: str, W: int, H: int, t: float):
         for px in [int(W * 0.18), int(W * 0.82)]:
             draw.polygon([(px, int(H * 0.38)), (px - 55, int(H * 0.64)), (px + 55, int(H * 0.64))], fill="#15803d", outline="#111827", width=3)
         return
-    if kind == "spotlight":
+    if kind == "gut_diagram":
+        draw.rectangle([0, 0, W, floor_y], fill="#fef3c7")
+        # Stylized 2D intestinal loop backdrop
+        draw.rounded_rectangle([int(W * 0.10), int(H * 0.20), int(W * 0.90), int(H * 0.65)], radius=40, fill="#fed7aa", outline="#9a3412", width=6)
+        draw.rounded_rectangle([int(W * 0.16), int(H * 0.25), int(W * 0.84), int(H * 0.60)], radius=30, fill="#fff7ed", outline="#c2410c", width=4)
+    elif kind == "clinic":
+        draw.rectangle([0, 0, W, floor_y], fill="#e0f2fe")
+        # Medical cross poster
+        cx, cy = int(W * 0.78), int(H * 0.28)
+        draw.rectangle([cx - 55, cy - 65, cx + 55, cy + 65], fill="#ffffff", outline="#111827", width=4)
+        draw.rectangle([cx - 12, cy - 38, cx + 12, cy + 38], fill="#ef4444")
+        draw.rectangle([cx - 38, cy - 12, cx + 38, cy + 12], fill="#ef4444")
+    elif kind == "dining":
+        draw.rectangle([0, 0, W, floor_y], fill="#fde68a")
+        # Tablecloth / counter
+        draw.rectangle([int(W * 0.05), floor_y - 95, int(W * 0.95), floor_y + 10], fill="#dc2626", outline="#111827", width=5)
+        draw.rectangle([int(W * 0.05), floor_y - 95, int(W * 0.95), floor_y - 75], fill="#ffffff", outline="#111827", width=3)
+    elif kind == "spotlight":
         draw.rectangle([0, 0, W, floor_y], fill="#e6e1c5")
         draw.polygon([(int(W * 0.33), 0), (int(W * 0.67), 0), (int(W * 0.90), floor_y), (int(W * 0.10), floor_y)], fill="#f4f0dc")
     else:  # office
@@ -220,6 +240,51 @@ def draw_character(draw: ImageDraw.ImageDraw, cx: int, cy: int, t: float, speaki
         draw.line([(cx - int(14 * s), hy + int(28 * s)), (cx + int(14 * s), hy + int(28 * s))], fill="#111827", width=int(4 * s))
 
 
+def draw_prop(draw: ImageDraw.ImageDraw, prop: dict, W: int, H: int, lt: float, tracker: list | None):
+    if lt < prop.get("delay", 0.0):
+        return
+    kind = prop["kind"]
+    cx, cy = int(prop["x"] * W), int(prop["y"] * H)
+    # Subtle pop-in bounce
+    dt = lt - prop.get("delay", 0.0)
+    s = 1.0 + 0.08 * math.sin(min(dt, 0.3) / 0.3 * math.pi)
+    r = int(64 * s)
+
+    # White circular card backing so prop pops clearly off any background
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill="#ffffff", outline="#111827", width=5)
+
+    if kind == "food_greasy":
+        # Plate + burger/fries + red X
+        draw.ellipse([cx - 38, cy - 10, cx + 38, cy + 32], fill="#fde047", outline="#111827", width=3)
+        draw.pieslice([cx - 28, cy - 30, cx + 28, cy + 12], 180, 360, fill="#f97316", outline="#111827", width=3)
+        draw.line([(cx - 36, cy - 36), (cx + 36, cy + 36)], fill="#dc2626", width=7)
+        draw.line([(cx + 36, cy - 36), (cx - 36, cy + 36)], fill="#dc2626", width=7)
+    elif kind == "milk_ban":
+        draw.rectangle([cx - 22, cy - 34, cx + 22, cy + 34], fill="#bfdbfe", outline="#111827", width=3)
+        draw.polygon([(cx - 22, cy - 34), (cx, cy - 48), (cx + 22, cy - 34)], fill="#60a5fa", outline="#111827", width=3)
+        draw.line([(cx - 34, cy - 34), (cx + 34, cy + 34)], fill="#dc2626", width=7)
+    elif kind == "pill_ban":
+        draw.rounded_rectangle([cx - 24, cy - 16, cx + 24, cy + 34], radius=8, fill="#fca5a5", outline="#111827", width=3)
+        draw.rectangle([cx - 18, cy - 30, cx + 18, cy - 14], fill="#94a3b8", outline="#111827", width=3)
+        draw.ellipse([cx - 42, cy - 42, cx + 42, cy + 42], outline="#dc2626", width=6)
+        draw.line([(cx - 30, cy - 30), (cx + 30, cy + 30)], fill="#dc2626", width=6)
+    elif kind == "water_glass":
+        draw.polygon([(cx - 24, cy - 34), (cx + 24, cy - 34), (cx + 18, cy + 34), (cx - 18, cy + 34)], fill="#e0f2fe", outline="#111827", width=3)
+        draw.polygon([(cx - 21, cy - 8), (cx + 21, cy - 8), (cx + 18, cy + 34), (cx - 18, cy + 34)], fill="#38bdf8", outline="#111827", width=2)
+        draw.line([(cx - 14, cy + 12), (cx - 2, cy + 24), (cx + 22, cy - 6)], fill="#16a34a", width=6)
+    elif kind == "gut_flora":
+        draw.ellipse([cx - 34, cy - 26, cx - 2, cy + 6], fill="#4ade80", outline="#111827", width=3)
+        draw.ellipse([cx + 4, cy - 10, cx + 36, cy + 22], fill="#f87171", outline="#111827", width=3)
+        draw.ellipse([cx - 16, cy + 8, cx + 14, cy + 38], fill="#60a5fa", outline="#111827", width=3)
+    elif kind == "clock_alert":
+        draw.ellipse([cx - 34, cy - 34, cx + 34, cy + 34], fill="#fef08a", outline="#111827", width=4)
+        draw.line([(cx, cy), (cx, cy - 22)], fill="#111827", width=5)
+        draw.line([(cx, cy), (cx + 18, cy + 8)], fill="#dc2626", width=5)
+
+    if tracker is not None:
+        tracker.append((f"prop:{kind}", (cx - r, cy - r, cx + r, cy + r)))
+
+
 def draw_polaroid(img: Image.Image, draw: ImageDraw.ImageDraw, pol: dict, W: int, H: int, lt: float, tracker: list | None):
     x, y = int(pol["x"] * W), int(pol["y"] * H)
     w, h = 330, 320
@@ -277,6 +342,25 @@ def assert_no_overlaps(scene_id: int, boxes: list[tuple[str, tuple[int, int, int
                 raise ValueError(f"Scene {scene_id} overlap: {na} {boxes[i][1]} vs {nb} {boxes[j][1]}")
 
 
+def assert_visual_richness(spec: dict):
+    """Hard-lock visual diversity: no consecutive identical backgrounds, props required, and camera scale variety."""
+    content_scenes = [s for s in spec["scenes"] if s.get("background", "office") != "dark_card"]
+    if len(content_scenes) < 2:
+        return
+    # 1. No two consecutive content scenes may share the exact same background
+    for a, b in zip(content_scenes, content_scenes[1:]):
+        if a.get("background", "office") == b.get("background", "office"):
+            raise ValueError(f"Richness gate failed: consecutive scenes {a['id']} & {b['id']} share background '{a.get('background')}'")
+    # 2. At least 70% of content scenes must include visual props, polaroid, or arrow
+    with_props = sum(1 for s in content_scenes if s.get("props") or s.get("polaroid") or s.get("arrow"))
+    if with_props / len(content_scenes) < 0.7:
+        raise ValueError(f"Richness gate failed: only {with_props}/{len(content_scenes)} content scenes have props/polaroid/arrow (need >= 70%).")
+    # 3. Camera scale diversity across actors
+    scales = [float(a.get("scale", 1.0)) for s in content_scenes for a in s.get("actors", [])]
+    if scales and (max(scales) - min(scales) < 0.2):
+        raise ValueError(f"Richness gate failed: actor scale range too flat ({min(scales):.2f}..{max(scales):.2f}); mix wide (<=0.95) and close-up (>=1.2) shots.")
+
+
 def render_scene_frame(spec: dict, sc: dict, lt: float, dur: float, W: int, H: int, check_layout: bool = False) -> Image.Image:
     bg_kind = sc.get("background", "office")
     img = Image.new("RGB", (W, H), "#18181b")
@@ -292,7 +376,7 @@ def render_scene_frame(spec: dict, sc: dict, lt: float, dur: float, W: int, H: i
         draw_outlined_text(draw, (W // 2, ty + 85), sc["title"], FONT_TITLE, "#ef4444", outline="#ffffff", stroke=6)
         draw.line([(int(W * 0.16), ty + 125), (int(W * 0.84), ty + 125)], fill="#facc15", width=7)
         if sc.get("badge_text"):
-            draw.rounded_rectangle([W // 2 - 140, ty + 175, W // 2 + 140, ty + 240], radius=16, fill="#0ea5e9", outline="#ffffff", width=4)
+            draw.rounded_rectangle([W // 2 - 165, ty + 175, W // 2 + 165, ty + 240], radius=16, fill="#0ea5e9", outline="#ffffff", width=4)
             draw_outlined_text(draw, (W // 2, ty + 207), sc["badge_text"], FONT_LABEL, "#ffffff", outline="#0369a1", stroke=2)
     else:
         ty = int(H * 0.115)
@@ -305,6 +389,9 @@ def render_scene_frame(spec: dict, sc: dict, lt: float, dur: float, W: int, H: i
         cfg = spec.get("characters", {}).get(actor["id"], {})
         speaking = actor.get("speaking", False) and (lt < dur - 0.35)
         draw_character(draw, int(actor["x"] * W), int(actor["y"] * H), lt, speaking, cfg, actor)
+
+    for prop in sc.get("props", []):
+        draw_prop(draw, prop, W, H, lt, tracker)
 
     if sc.get("arrow"):
         ar = sc["arrow"]
@@ -331,15 +418,35 @@ def render_scene_frame(spec: dict, sc: dict, lt: float, dur: float, W: int, H: i
     return img
 
 
-async def build(script_path: Path, out_mp4: Path):
+def render_preview_grid(spec: dict, out_jpg: Path, W: int, H: int):
+    scenes = spec["scenes"]
+    cols = min(5, len(scenes))
+    rows = math.ceil(len(scenes) / cols)
+    tw, th = 240, int(240 * H / W)
+    grid = Image.new("RGB", (cols * tw, rows * th), "#111827")
+    for idx, sc in enumerate(scenes):
+        frame = render_scene_frame(spec, sc, 2.0, 5.0, W, H, check_layout=True).resize((tw, th), Image.Resampling.LANCZOS)
+        r, c = divmod(idx, cols)
+        grid.paste(frame, (c * tw, r * th))
+    grid.save(out_jpg, quality=90)
+    print(f"Preview grid saved -> {out_jpg}")
+
+
+async def build(script_path: Path, out_path: Path, preview_only: bool, allow_simple: bool):
     spec = json.loads(script_path.read_text(encoding="utf-8"))
+    if not allow_simple:
+        assert_visual_richness(spec)
     aspect = spec.get("aspect", "9:16")
     W, H = (1280, 720) if aspect == "16:9" else (720, 1280)
+
+    if preview_only:
+        render_preview_grid(spec, out_path, W, H)
+        return
+
     FPS = int(spec.get("fps", 30))
     voice = spec.get("voice", "vi-VN-NamMinhNeural")
     lang = spec.get("lang", "vi")
-
-    work_dir = out_mp4.parent / ".build_cache"
+    work_dir = out_path.parent / ".build_cache"
     work_dir.mkdir(parents=True, exist_ok=True)
 
     sr = 44100
@@ -380,7 +487,7 @@ async def build(script_path: Path, out_mp4: Path):
 
     for idx, sc in enumerate(spec["scenes"]):
         render_scene_frame(spec, sc, max(0.0, scene_durs[idx] - 0.5), scene_durs[idx], W, H, check_layout=True)
-    print(f"Layout guard passed for all {len(spec['scenes'])} scenes (0 overlaps).")
+    print(f"Layout & richness guards passed for all {len(spec['scenes'])} scenes.")
 
     ffmpeg_log = open(work_dir / "ffmpeg.log", "wb")
     proc = subprocess.Popen(
@@ -389,7 +496,7 @@ async def build(script_path: Path, out_mp4: Path):
             "-s", f"{W}x{H}", "-pix_fmt", "rgb24", "-r", str(FPS), "-i", "-",
             "-i", str(mix_wav),
             "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "192k", "-shortest", str(out_mp4),
+            "-c:a", "aac", "-b:a", "192k", "-shortest", str(out_path),
         ],
         stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=ffmpeg_log,
     )
@@ -410,12 +517,14 @@ async def build(script_path: Path, out_mp4: Path):
     ffmpeg_log.close()
     if ret != 0:
         raise RuntimeError((work_dir / "ffmpeg.log").read_text(encoding="utf-8", errors="replace"))
-    print("Rendered ->", out_mp4)
+    print("Rendered ->", out_path)
 
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser(description="Render boldline-explainer JSON script to MP4.")
+    p = argparse.ArgumentParser(description="Render boldline-explainer JSON script to MP4 or preview grid.")
     p.add_argument("script", type=Path)
     p.add_argument("-o", "--output", type=Path, default=Path("output.mp4"))
+    p.add_argument("--preview", action="store_true", help="Render instant 1-frame-per-scene contact sheet JPG instead of MP4")
+    p.add_argument("--allow-simple", action="store_true", help="Bypass visual richness gate")
     args = p.parse_args()
-    asyncio.run(build(args.script, args.output))
+    asyncio.run(build(args.script, args.output, args.preview, args.allow_simple))

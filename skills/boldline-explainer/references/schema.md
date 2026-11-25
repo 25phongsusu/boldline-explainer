@@ -33,7 +33,7 @@ Every video is defined by a single JSON file passed to `scripts/render_video.py`
 | Field | Type | Description |
 |---|---|---|
 | `id` | int | 1-based scene index |
-| `background` | string | `"dark_card"`, `"office"`, `"spotlight"`, or `"forest_hills"` |
+| `background` | string | `"dark_card"`, `"office"`, `"clinic"`, `"dining"`, `"gut_diagram"`, `"spotlight"`, or `"forest_hills"` |
 | `title` | string | Main red-and-white outlined title with yellow underline |
 | `top_text` | string | Optional smaller yellow text above title (used on `dark_card`) |
 | `badge_text` | string | Optional blue pill below title (e.g. `"rockylens.com"` on outro `dark_card`) |
@@ -43,4 +43,5 @@ Every video is defined by a single JSON file passed to `scripts/render_video.py`
 | `label` | dict | Optional pill: `{"text": "...", "x": 0.5, "y": 0.38, "delay": 0.6}` |
 | `polaroid` | dict | Optional evidence card: `{"x": 0.46, "y": 0.37, "url": "...", "headline": "...", "cta": "...", "caption": "...", "image": null, "stamp": "GIẢ MẠO", "stamp_color": "#dc2626", "stamp_delay": 1.6}` |
 | `arrow` | dict | Optional action arrow: `{"x0": 0.38, "x1": 0.65, "y": 0.46, "color": "#22c55e"}` |
+| `props` | list | Optional illustrative vector props: `[{"kind": "food_greasy|milk_ban|pill_ban|water_glass|gut_flora|clock_alert", "x": 0.7, "y": 0.45, "delay": 0.4}]` |
 | `sticker` | string | Optional `"sweat"`, `"heart"`, or `"exclamation"` |
