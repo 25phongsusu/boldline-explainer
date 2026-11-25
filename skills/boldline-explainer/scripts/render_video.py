@@ -3,6 +3,7 @@ import asyncio
 import json
 import math
 import os
+import re
 import subprocess
 import wave
 from pathlib import Path
@@ -33,30 +34,81 @@ FONT_SMALL = load_font(21, False)
 FONT_STAMP = load_font(38, True)
 
 
+def estimate_word_timings(text: str, audio_dur: float) -> list[dict]:
+    """Fallback proportional word timings when WordBoundary events are unavailable."""
+    words = text.split()
+    if not words:
+        return []
+    weights = [max(1, len(re.sub(r"[^\w]", "", w))) for w in words]
+    total_w = sum(weights)
+    timings, cur = [], 0.0
+    for w, wt in zip(words, weights):
+        wdur = audio_dur * (wt / total_w)
+        timings.append({"word": w, "start": round(cur, 3), "end": round(cur + wdur, 3)})
+        cur += wdur
+    return timings
+
+
 async def gen_tts_for_scene(sc: dict, voice: str, lang: str, work_dir: Path):
     mp3_path = work_dir / f"scene_{sc['id']}.mp3"
     wav_path = work_dir / f"scene_{sc['id']}.wav"
-    if wav_path.exists() and wav_path.stat().st_size > 1000:
-        with wave.open(str(wav_path), "rb") as w:
-            return wav_path, w.getnframes() / float(w.getframerate())
-    used_gtts = False
-    try:
-        comm = edge_tts.Communicate(sc["text"], voice)
-        await comm.save(str(mp3_path))
-    except Exception:
-        used_gtts = True
-        gTTS(sc["text"], lang=lang).save(str(mp3_path))
+    words_path = work_dir / f"scene_{sc['id']}_words.json"
 
-    af = ["-af", "atempo=1.15"] if used_gtts else []
-    subprocess.run(
-        ["ffmpeg", "-y", "-i", str(mp3_path), *af, "-ar", "44100", "-ac", "1", str(wav_path)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=True,
-    )
+    if wav_path.exists() and wav_path.stat().st_size > 1000 and words_path.exists():
+        with wave.open(str(wav_path), "rb") as w:
+            dur = w.getnframes() / float(w.getframerate())
+        return wav_path, dur, json.loads(words_path.read_text(encoding="utf-8"))
+
+    used_gtts = False
+    word_timings = []
+    if not (wav_path.exists() and wav_path.stat().st_size > 1000):
+        try:
+            comm = edge_tts.Communicate(sc["text"], voice)
+            with open(mp3_path, "wb") as f:
+                async for chunk in comm.stream():
+                    if chunk["type"] == "audio":
+                        f.write(chunk["data"])
+                    elif chunk["type"] == "WordBoundary":
+                        st = chunk["offset"] / 10_000_000.0
+                        ed = st + chunk["duration"] / 10_000_000.0
+                        word_timings.append({"word": chunk["text"], "start": round(st, 3), "end": round(ed, 3)})
+        except Exception:
+            used_gtts = True
+            gTTS(sc["text"], lang=lang).save(str(mp3_path))
+
+        af = ["-af", "atempo=1.15"] if used_gtts else []
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(mp3_path), *af, "-ar", "44100", "-ac", "1", str(wav_path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+
     with wave.open(str(wav_path), "rb") as w:
         dur = w.getnframes() / float(w.getframerate())
-    return wav_path, dur
+
+    if not word_timings:
+        word_timings = estimate_word_timings(sc["text"], dur)
+    words_path.write_text(json.dumps(word_timings, ensure_ascii=False), encoding="utf-8")
+    return wav_path, dur, word_timings
+
+
+def resolve_trigger_delay(item: dict, word_timings: list[dict], voice_offset: float = 0.15) -> float:
+    """Resolve `trigger_word` to exact timestamp in scene seconds, or fall back to `delay`."""
+    tw = item.get("trigger_word", "").strip().lower()
+    if tw and word_timings:
+        for wt in word_timings:
+            clean = re.sub(r"[^\w\s]", "", wt["word"].lower())
+            if tw in clean or clean in tw and len(clean) >= 2:
+                return round(voice_offset + wt["start"], 3)
+        # Multi-word phrase check
+        joined = " ".join(re.sub(r"[^\w]", "", w["word"].lower()) for w in word_timings)
+        idx = joined.find(tw)
+        if idx >= 0:
+            prefix_words = len(joined[:idx].split())
+            if prefix_words < len(word_timings):
+                return round(voice_offset + word_timings[prefix_words]["start"], 3)
+    return float(item.get("delay", 0.0))
 
 
 def make_sfx(kind: str, sr: int = 44100) -> np.ndarray:
@@ -96,21 +148,50 @@ def draw_outlined_text(draw: ImageDraw.ImageDraw, xy, text: str, font, fill, out
     draw.text(xy, text, font=font, fill=fill, stroke_width=stroke, stroke_fill=outline, anchor=anchor)
 
 
-def wrap_text(text: str, font, max_w: int, draw: ImageDraw.ImageDraw) -> list[str]:
+def wrap_text_words(text: str, font, max_w: int, draw: ImageDraw.ImageDraw) -> list[list[tuple[int, str]]]:
+    """Wrap text into lines of (global_word_idx, word_str) for karaoke word highlighting."""
     words = text.split()
-    lines, cur = [], ""
-    for w in words:
-        test = (cur + " " + w).strip()
+    lines, cur = [], []
+    for idx, w in enumerate(words):
+        test = " ".join([cw for _, cw in cur] + [w])
         bbox = draw.textbbox((0, 0), test, font=font)
         if bbox[2] - bbox[0] <= max_w:
-            cur = test
+            cur.append((idx, w))
         else:
             if cur:
                 lines.append(cur)
-            cur = w
+            cur = [(idx, w)]
     if cur:
         lines.append(cur)
     return lines
+
+
+def draw_karaoke_subtitles(draw: ImageDraw.ImageDraw, text: str, word_timings: list[dict], lt: float, W: int, H: int, tracker: list | None):
+    lines = wrap_text_words(text, FONT_SUB, W - 90, draw)
+    if not lines:
+        return
+    # Determine active word index from speech time (voice starts at 0.15s)
+    speech_t = lt - 0.15
+    active_idx = -1
+    for i, wt in enumerate(word_timings):
+        if wt["start"] <= speech_t <= wt["end"] + 0.08:
+            active_idx = i
+            break
+
+    sub_base = int(H * 0.85) - (len(lines) - 1) * 40
+    for row_i, row in enumerate(lines):
+        y = sub_base + row_i * 42
+        full_line = " ".join(w for _, w in row)
+        total_w = draw.textbbox((0, 0), full_line, font=FONT_SUB)[2] - draw.textbbox((0, 0), full_line, font=FONT_SUB)[0]
+        cur_x = (W - total_w) // 2
+        for w_idx, w in row:
+            color = "#fde047" if w_idx == active_idx else "#ffffff"
+            draw.text((cur_x, y), w, font=FONT_SUB, fill=color, stroke_width=6, stroke_fill="#000000", anchor="lm")
+            adv = draw.textbbox((0, 0), w + " ", font=FONT_SUB)[2] - draw.textbbox((0, 0), w + " ", font=FONT_SUB)[0]
+            cur_x += adv
+
+    if tracker is not None:
+        tracker.append(("subtitles", (40, sub_base - 24, W - 40, sub_base + len(lines) * 42)))
 
 
 def draw_bg(draw: ImageDraw.ImageDraw, kind: str, W: int, H: int, t: float):
@@ -130,25 +211,22 @@ def draw_bg(draw: ImageDraw.ImageDraw, kind: str, W: int, H: int, t: float):
         return
     if kind == "gut_diagram":
         draw.rectangle([0, 0, W, floor_y], fill="#fef3c7")
-        # Stylized 2D intestinal loop backdrop
         draw.rounded_rectangle([int(W * 0.10), int(H * 0.20), int(W * 0.90), int(H * 0.65)], radius=40, fill="#fed7aa", outline="#9a3412", width=6)
         draw.rounded_rectangle([int(W * 0.16), int(H * 0.25), int(W * 0.84), int(H * 0.60)], radius=30, fill="#fff7ed", outline="#c2410c", width=4)
     elif kind == "clinic":
         draw.rectangle([0, 0, W, floor_y], fill="#e0f2fe")
-        # Medical cross poster
         cx, cy = int(W * 0.78), int(H * 0.28)
         draw.rectangle([cx - 55, cy - 65, cx + 55, cy + 65], fill="#ffffff", outline="#111827", width=4)
         draw.rectangle([cx - 12, cy - 38, cx + 12, cy + 38], fill="#ef4444")
         draw.rectangle([cx - 38, cy - 12, cx + 38, cy + 12], fill="#ef4444")
     elif kind == "dining":
         draw.rectangle([0, 0, W, floor_y], fill="#fde68a")
-        # Tablecloth / counter
         draw.rectangle([int(W * 0.05), floor_y - 95, int(W * 0.95), floor_y + 10], fill="#dc2626", outline="#111827", width=5)
         draw.rectangle([int(W * 0.05), floor_y - 95, int(W * 0.95), floor_y - 75], fill="#ffffff", outline="#111827", width=3)
     elif kind == "spotlight":
         draw.rectangle([0, 0, W, floor_y], fill="#e6e1c5")
         draw.polygon([(int(W * 0.33), 0), (int(W * 0.67), 0), (int(W * 0.90), floor_y), (int(W * 0.10), floor_y)], fill="#f4f0dc")
-    else:  # office
+    else:
         draw.rectangle([0, 0, W, floor_y], fill="#ece0be")
         wx0, wy0, wx1, wy1 = int(W * 0.21), int(H * 0.16), int(W * 0.79), int(H * 0.46)
         draw.rectangle([wx0, wy0, wx1, wy1], fill="#93c5fd", outline="#5c4033", width=10)
@@ -164,11 +242,12 @@ def draw_bg(draw: ImageDraw.ImageDraw, kind: str, W: int, H: int, t: float):
         draw.line([(0, y), (W, y)], fill="#7c5530", width=3)
 
 
-def draw_character(draw: ImageDraw.ImageDraw, cx: int, cy: int, t: float, speaking: bool, cfg: dict, actor: dict):
+def draw_character(draw: ImageDraw.ImageDraw, cx: int, cy: int, t: float, mouth_amp: float, cfg: dict, actor: dict):
     s = float(actor.get("scale", 1.0))
     mood = actor.get("mood", "normal")
     arm_pose = actor.get("arm_pose", "down")
-    bob = int(3 * math.sin(t * 5.0)) if speaking else int(1.5 * math.sin(t * 2.0))
+    speaking = mouth_amp > 0.12
+    bob = int(3 * mouth_amp * math.sin(t * 9.0)) if speaking else int(1.5 * math.sin(t * 2.0))
     cy += bob
 
     draw.line([(cx - int(18 * s), cy + int(95 * s)), (cx - int(18 * s), cy + int(145 * s))], fill="#111827", width=int(8 * s))
@@ -187,7 +266,7 @@ def draw_character(draw: ImageDraw.ImageDraw, cx: int, cy: int, t: float, speaki
     if cfg.get("tie"):
         draw.polygon([(cx - int(6 * s), cy + int(24 * s)), (cx + int(6 * s), cy + int(24 * s)), (cx + int(8 * s), cy + int(75 * s)), (cx, cy + int(85 * s)), (cx - int(8 * s), cy + int(75 * s))], fill="#dc2626", outline="#111827", width=int(3 * s))
 
-    wave = int(8 * math.sin(t * 7.0)) if speaking else 0
+    wave = int(10 * mouth_amp * math.sin(t * 8.0)) if speaking else 0
     if arm_pose == "point_right":
         draw.line([(cx - int(45 * s), cy + int(25 * s)), (cx - int(72 * s), cy + int(65 * s))], fill="#111827", width=int(7 * s))
         draw.ellipse([cx - int(82 * s), cy + int(56 * s), cx - int(62 * s), cy + int(76 * s)], fill="#fde6d8", outline="#111827", width=int(3 * s))
@@ -229,32 +308,30 @@ def draw_character(draw: ImageDraw.ImageDraw, cx: int, cy: int, t: float, speaki
         draw.ellipse([cx + int(6 * s), hy - int(22 * s), cx + int(42 * s), hy + int(12 * s)], outline="#374151", width=int(4 * s))
         draw.line([(cx - int(6 * s), hy - int(5 * s)), (cx + int(6 * s), hy - int(5 * s))], fill="#374151", width=int(4 * s))
 
-    mouth_open = speaking and (int(t * 12) % 2 == 0)
-    if mood == "shocked":
+    # Audio-reactive lip-sync: mouth height scales smoothly with voice RMS
+    if speaking:
+        mh = max(3, int(11 * min(1.0, mouth_amp * 1.4)))
+        draw.ellipse([cx - int(11 * s), hy + int(28 * s) - mh, cx + int(11 * s), hy + int(28 * s) + mh], fill="#991b1b", outline="#111827", width=int(3 * s))
+    elif mood == "shocked":
         draw.ellipse([cx - int(12 * s), hy + int(22 * s), cx + int(12 * s), hy + int(42 * s)], fill="#7f1d1d", outline="#111827", width=int(3 * s))
     elif mood == "happy":
         draw.arc([cx - int(18 * s), hy + int(16 * s), cx + int(18 * s), hy + int(38 * s)], 10, 170, fill="#111827", width=int(4 * s))
-    elif mouth_open:
-        draw.ellipse([cx - int(10 * s), hy + int(22 * s), cx + int(10 * s), hy + int(36 * s)], fill="#991b1b", outline="#111827", width=int(3 * s))
     else:
         draw.line([(cx - int(14 * s), hy + int(28 * s)), (cx + int(14 * s), hy + int(28 * s))], fill="#111827", width=int(4 * s))
 
 
-def draw_prop(draw: ImageDraw.ImageDraw, prop: dict, W: int, H: int, lt: float, tracker: list | None):
-    if lt < prop.get("delay", 0.0):
+def draw_prop(draw: ImageDraw.ImageDraw, prop: dict, W: int, H: int, lt: float, delay: float, tracker: list | None):
+    if lt < delay:
         return
     kind = prop["kind"]
     cx, cy = int(prop["x"] * W), int(prop["y"] * H)
-    # Subtle pop-in bounce
-    dt = lt - prop.get("delay", 0.0)
-    s = 1.0 + 0.08 * math.sin(min(dt, 0.3) / 0.3 * math.pi)
+    dt = lt - delay
+    s = 1.0 + 0.12 * math.sin(min(dt, 0.25) / 0.25 * math.pi)
     r = int(64 * s)
 
-    # White circular card backing so prop pops clearly off any background
     draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill="#ffffff", outline="#111827", width=5)
 
     if kind == "food_greasy":
-        # Plate + burger/fries + red X
         draw.ellipse([cx - 38, cy - 10, cx + 38, cy + 32], fill="#fde047", outline="#111827", width=3)
         draw.pieslice([cx - 28, cy - 30, cx + 28, cy + 12], 180, 360, fill="#f97316", outline="#111827", width=3)
         draw.line([(cx - 36, cy - 36), (cx + 36, cy + 36)], fill="#dc2626", width=7)
@@ -319,8 +396,8 @@ def draw_polaroid(img: Image.Image, draw: ImageDraw.ImageDraw, pol: dict, W: int
         tracker.append(("polaroid", (x, y - 16, x + w, y + h)))
 
 
-def draw_label_pill(draw: ImageDraw.ImageDraw, lbl: dict, W: int, H: int, lt: float, tracker: list | None):
-    if lt < lbl.get("delay", 0.0):
+def draw_label_pill(draw: ImageDraw.ImageDraw, lbl: dict, W: int, H: int, lt: float, delay: float, tracker: list | None):
+    if lt < delay:
         return
     cx, cy = int(lbl["x"] * W), int(lbl["y"] * H)
     text = lbl["text"]
@@ -343,29 +420,33 @@ def assert_no_overlaps(scene_id: int, boxes: list[tuple[str, tuple[int, int, int
 
 
 def assert_visual_richness(spec: dict):
-    """Hard-lock visual diversity: no consecutive identical backgrounds, props required, and camera scale variety."""
     content_scenes = [s for s in spec["scenes"] if s.get("background", "office") != "dark_card"]
     if len(content_scenes) < 2:
         return
-    # 1. No two consecutive content scenes may share the exact same background
     for a, b in zip(content_scenes, content_scenes[1:]):
         if a.get("background", "office") == b.get("background", "office"):
             raise ValueError(f"Richness gate failed: consecutive scenes {a['id']} & {b['id']} share background '{a.get('background')}'")
-    # 2. At least 70% of content scenes must include visual props, polaroid, or arrow
     with_props = sum(1 for s in content_scenes if s.get("props") or s.get("polaroid") or s.get("arrow"))
     if with_props / len(content_scenes) < 0.7:
         raise ValueError(f"Richness gate failed: only {with_props}/{len(content_scenes)} content scenes have props/polaroid/arrow (need >= 70%).")
-    # 3. Camera scale diversity across actors
     scales = [float(a.get("scale", 1.0)) for s in content_scenes for a in s.get("actors", [])]
     if scales and (max(scales) - min(scales) < 0.2):
-        raise ValueError(f"Richness gate failed: actor scale range too flat ({min(scales):.2f}..{max(scales):.2f}); mix wide (<=0.95) and close-up (>=1.2) shots.")
+        raise ValueError(f"Richness gate failed: actor scale range too flat ({min(scales):.2f}..{max(scales):.2f}).")
 
 
-def render_scene_frame(spec: dict, sc: dict, lt: float, dur: float, W: int, H: int, check_layout: bool = False) -> Image.Image:
+def render_scene_frame(
+    spec: dict, sc: dict, lt: float, dur: float, W: int, H: int,
+    word_timings: list[dict] | None = None,
+    mouth_amp: float = 0.0,
+    prop_delays: list[float] | None = None,
+    label_delay: float | None = None,
+    check_layout: bool = False,
+) -> Image.Image:
     bg_kind = sc.get("background", "office")
     img = Image.new("RGB", (W, H), "#18181b")
     draw = ImageDraw.Draw(img)
     tracker = [] if check_layout else None
+    word_timings = word_timings or []
 
     draw_bg(draw, bg_kind, W, H, lt)
 
@@ -387,11 +468,12 @@ def render_scene_frame(spec: dict, sc: dict, lt: float, dur: float, W: int, H: i
 
     for actor in sc.get("actors", []):
         cfg = spec.get("characters", {}).get(actor["id"], {})
-        speaking = actor.get("speaking", False) and (lt < dur - 0.35)
-        draw_character(draw, int(actor["x"] * W), int(actor["y"] * H), lt, speaking, cfg, actor)
+        amp = mouth_amp if actor.get("speaking", False) else 0.0
+        draw_character(draw, int(actor["x"] * W), int(actor["y"] * H), lt, amp, cfg, actor)
 
-    for prop in sc.get("props", []):
-        draw_prop(draw, prop, W, H, lt, tracker)
+    for p_idx, prop in enumerate(sc.get("props", [])):
+        d = prop_delays[p_idx] if prop_delays is not None else float(prop.get("delay", 0.0))
+        draw_prop(draw, prop, W, H, lt, d, tracker)
 
     if sc.get("arrow"):
         ar = sc["arrow"]
@@ -404,15 +486,11 @@ def render_scene_frame(spec: dict, sc: dict, lt: float, dur: float, W: int, H: i
         draw_polaroid(img, draw, sc["polaroid"], W, H, lt, tracker)
 
     if sc.get("label"):
-        draw_label_pill(draw, sc["label"], W, H, lt, tracker)
+        ld = label_delay if label_delay is not None else float(sc["label"].get("delay", 0.0))
+        draw_label_pill(draw, sc["label"], W, H, lt, ld, tracker)
 
-    # Subtitles
-    lines = wrap_text(sc["text"], FONT_SUB, W - 90, draw)
-    sub_base = int(H * 0.85) - (len(lines) - 1) * 40
-    for i, ln in enumerate(lines):
-        draw_outlined_text(draw, (W // 2, sub_base + i * 42), ln, FONT_SUB, "#ffffff", outline="#000000", stroke=6)
-    if tracker is not None and lines:
-        tracker.append(("subtitles", (40, sub_base - 24, W - 40, sub_base + len(lines) * 42)))
+    draw_karaoke_subtitles(draw, sc["text"], word_timings, lt, W, H, tracker)
+    if tracker is not None:
         assert_no_overlaps(sc["id"], tracker)
 
     return img
@@ -425,7 +503,7 @@ def render_preview_grid(spec: dict, out_jpg: Path, W: int, H: int):
     tw, th = 240, int(240 * H / W)
     grid = Image.new("RGB", (cols * tw, rows * th), "#111827")
     for idx, sc in enumerate(scenes):
-        frame = render_scene_frame(spec, sc, 2.0, 5.0, W, H, check_layout=True).resize((tw, th), Image.Resampling.LANCZOS)
+        frame = render_scene_frame(spec, sc, 3.0, 6.0, W, H, check_layout=True).resize((tw, th), Image.Resampling.LANCZOS)
         r, c = divmod(idx, cols)
         grid.paste(frame, (c * tw, r * th))
     grid.save(out_jpg, quality=90)
@@ -451,11 +529,15 @@ async def build(script_path: Path, out_path: Path, preview_only: bool, allow_sim
 
     sr = 44100
     scene_durs, wav_arrays, sfx_events = [], [], []
+    all_word_timings, all_prop_delays, all_label_delays, frame_rms_envs = [], [], [], []
     cur_sample = 0
+
     for sc in spec["scenes"]:
-        wav_path, audio_dur = await gen_tts_for_scene(sc, voice, lang, work_dir)
+        wav_path, audio_dur, word_timings = await gen_tts_for_scene(sc, voice, lang, work_dir)
         dur = round(audio_dur + 0.55, 2)
         scene_durs.append(dur)
+        all_word_timings.append(word_timings)
+
         with wave.open(str(wav_path), "rb") as w:
             raw = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
         target_len = int(dur * sr)
@@ -464,8 +546,31 @@ async def build(script_path: Path, out_path: Path, preview_only: bool, allow_sim
         copy_len = min(len(raw), target_len - start_idx)
         padded[start_idx : start_idx + copy_len] = raw[:copy_len]
         wav_arrays.append(padded)
+
+        # Compute per-frame RMS amplitude for real lip-sync
+        n_frames = int(round(dur * FPS))
+        samples_per_frame = sr // FPS
+        env = []
+        for f_i in range(n_frames):
+            seg = padded[f_i * samples_per_frame : (f_i + 1) * samples_per_frame]
+            rms = float(np.sqrt(np.mean(seg ** 2))) if len(seg) else 0.0
+            env.append(min(1.0, rms * 6.5))
+        frame_rms_envs.append(env)
+
         if sc.get("sfx"):
             sfx_events.append((cur_sample + int(0.05 * sr), sc["sfx"]))
+
+        # Resolve word-triggered prop delays & schedule pop SFX on each trigger
+        p_delays = []
+        for prop in sc.get("props", []):
+            d = resolve_trigger_delay(prop, word_timings)
+            p_delays.append(d)
+            if prop.get("trigger_word"):
+                sfx_events.append((cur_sample + int(d * sr), prop.get("sfx", "pop")))
+        all_prop_delays.append(p_delays)
+
+        ld = resolve_trigger_delay(sc["label"], word_timings) if sc.get("label") else None
+        all_label_delays.append(ld)
         cur_sample += target_len
 
     voice_full = np.concatenate(wav_arrays)
@@ -475,7 +580,8 @@ async def build(script_path: Path, out_path: Path, preview_only: bool, allow_sim
     for pos, kind in sfx_events:
         s = make_sfx(kind, sr)
         end = min(pos + len(s), len(mix))
-        mix[pos:end] += s[: end - pos]
+        if pos < len(mix):
+            mix[pos:end] += s[: end - pos]
     mix = np.clip(mix, -0.95, 0.95)
 
     mix_wav = work_dir / "full_mix.wav"
@@ -486,8 +592,12 @@ async def build(script_path: Path, out_path: Path, preview_only: bool, allow_sim
         w.writeframes((mix * 32767.0).astype(np.int16).tobytes())
 
     for idx, sc in enumerate(spec["scenes"]):
-        render_scene_frame(spec, sc, max(0.0, scene_durs[idx] - 0.5), scene_durs[idx], W, H, check_layout=True)
-    print(f"Layout & richness guards passed for all {len(spec['scenes'])} scenes.")
+        render_scene_frame(
+            spec, sc, max(0.0, scene_durs[idx] - 0.5), scene_durs[idx], W, H,
+            word_timings=all_word_timings[idx], prop_delays=all_prop_delays[idx], label_delay=all_label_delays[idx],
+            check_layout=True,
+        )
+    print(f"Layout, richness & sync checks passed for all {len(spec['scenes'])} scenes.")
 
     ffmpeg_log = open(work_dir / "ffmpeg.log", "wb")
     proc = subprocess.Popen(
@@ -505,8 +615,16 @@ async def build(script_path: Path, out_path: Path, preview_only: bool, allow_sim
     for idx, sc in enumerate(spec["scenes"]):
         dur = scene_durs[idx]
         n_frames = int(round(dur * FPS))
+        env = frame_rms_envs[idx]
         for f_idx in range(n_frames):
-            frame = render_scene_frame(spec, sc, f_idx / float(FPS), dur, W, H)
+            amp = env[f_idx] if f_idx < len(env) else 0.0
+            frame = render_scene_frame(
+                spec, sc, f_idx / float(FPS), dur, W, H,
+                word_timings=all_word_timings[idx],
+                mouth_amp=amp,
+                prop_delays=all_prop_delays[idx],
+                label_delay=all_label_delays[idx],
+            )
             if prev_last is not None and f_idx < dissolve_frames:
                 frame = Image.blend(prev_last, frame, (f_idx + 1) / float(dissolve_frames + 1))
             proc.stdin.write(frame.tobytes())

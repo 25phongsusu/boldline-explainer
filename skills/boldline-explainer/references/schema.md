@@ -43,5 +43,5 @@ Every video is defined by a single JSON file passed to `scripts/render_video.py`
 | `label` | dict | Optional pill: `{"text": "...", "x": 0.5, "y": 0.38, "delay": 0.6}` |
 | `polaroid` | dict | Optional evidence card: `{"x": 0.46, "y": 0.37, "url": "...", "headline": "...", "cta": "...", "caption": "...", "image": null, "stamp": "GIẢ MẠO", "stamp_color": "#dc2626", "stamp_delay": 1.6}` |
 | `arrow` | dict | Optional action arrow: `{"x0": 0.38, "x1": 0.65, "y": 0.46, "color": "#22c55e"}` |
-| `props` | list | Optional illustrative vector props: `[{"kind": "food_greasy|milk_ban|pill_ban|water_glass|gut_flora|clock_alert", "x": 0.7, "y": 0.45, "delay": 0.4}]` |
+| `props` | list | Optional illustrative vector props: `[{"kind": "food_greasy|milk_ban|pill_ban|water_glass|gut_flora|clock_alert", "x": 0.7, "y": 0.45, "trigger_word": "sữa", "delay": 0.4}]` (`trigger_word` syncs pop-in + SFX to the exact spoken word) |
 | `sticker` | string | Optional `"sweat"`, `"heart"`, or `"exclamation"` |
