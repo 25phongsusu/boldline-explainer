@@ -540,6 +540,44 @@ function propSVG(prop, delay, lt, W, H) {
   return `<g transform="translate(${cx},${cy}) scale(${pop})" filter="url(#softShadow)">${inner}</g>`;
 }
 
+function polaroidSVG(pol, lt, W, H) {
+  const x = pol.x * W, y = pol.y * H, w = 320, h = 300;
+  const showStamp = pol.stamp && lt >= (pol.stamp_delay ?? 0);
+  const sc = pol.stamp_color || '#dc2626';
+  let body = '';
+  if (showStamp) {
+    body = `
+      <text x="${w/2}" y="98" text-anchor="middle" font-size="20" font-weight="800" fill="#b91c1c">${esc(pol.headline || '')}</text>
+      <rect x="34" y="116" width="${w-68}" height="56" rx="6" fill="#ffffff" stroke="${sc}" stroke-width="5"/>
+      <text x="${w/2}" y="154" text-anchor="middle" font-size="32" font-weight="900" fill="${sc}">${esc(pol.stamp)}</text>
+      <rect x="64" y="186" width="${w-128}" height="36" rx="6" fill="#dc2626" stroke="#7f1d1d" stroke-width="3"/>
+      <text x="${w/2}" y="210" text-anchor="middle" font-size="18" font-weight="800" fill="#ffffff">${esc(pol.cta || '')}</text>
+    `;
+  } else {
+    body = `
+      <text x="${w/2}" y="122" text-anchor="middle" font-size="26" font-weight="900" fill="#b91c1c">${esc(pol.headline || '')}</text>
+      <rect x="64" y="158" width="${w-128}" height="42" rx="6" fill="#dc2626" stroke="#7f1d1d" stroke-width="3"/>
+      <text x="${w/2}" y="185" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">${esc(pol.cta || '')}</text>
+    `;
+  }
+  return `
+    <g transform="translate(${x},${y})" filter="url(#softShadow)">
+      <rect x="0" y="0" width="${w}" height="${h}" rx="8" fill="#f8fafc" stroke="#1f2937" stroke-width="5"/>
+      <rect x="${w/2-48}" y="-14" width="96" height="30" fill="#fde047" stroke="#a16207" stroke-width="2" opacity="0.92"/>
+      <rect x="16" y="26" width="${w-32}" height="36" rx="4" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+      <text x="${w/2}" y="50" text-anchor="middle" font-size="18" font-weight="700" fill="#dc2626">${esc(pol.url || '')}</text>
+      <rect x="16" y="70" width="${w-32}" height="166" fill="#fef2f2" stroke="#fca5a5" stroke-width="2"/>
+      ${body}
+      <text x="${w/2}" y="272" text-anchor="middle" font-size="19" font-weight="700" fill="#334155">${esc(pol.caption || 'Ảnh chụp bằng chứng')}</text>
+    </g>
+  `;
+}
+
+function arrowSVG(ar, W, H) {
+  const x0 = ar.x0 * W, x1 = ar.x1 * W, y = ar.y * H, c = ar.color || '#22c55e';
+  return `<polygon points="${x0},${y-18} ${x1-40},${y-18} ${x1-40},${y-38} ${x1},${y} ${x1-40},${y+38} ${x1-40},${y+18} ${x0},${y+18}" fill="${c}" stroke="#111827" stroke-width="4" stroke-linejoin="round" filter="url(#softShadow)"/>`;
+}
+
 window.renderState = function(st) {
   const { W, H, sc, lt, dur, chars, words, mouthAmp, propDelays, labelDelay } = st;
   const bg = sc.background || 'living_office';
@@ -554,6 +592,8 @@ window.renderState = function(st) {
   (sc.props || []).forEach((p, idx) => {
     camHTML += propSVG(p, propDelays[idx] ?? (p.delay || 0), lt, W, H);
   });
+  if (sc.arrow) camHTML += arrowSVG(sc.arrow, W, H);
+  if (sc.polaroid) camHTML += polaroidSVG(sc.polaroid, lt, W, H);
   document.getElementById('cam').setAttribute('transform', `translate(${zx},${zy}) scale(${zoom})`);
   document.getElementById('cam').innerHTML = camHTML;
 
