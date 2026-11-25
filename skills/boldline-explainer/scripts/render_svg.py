@@ -228,6 +228,45 @@ function esc(s) {
 
 function bgSVG(kind, W, H, lt) {
   const fy = Math.round(H * 0.735);
+  if (kind === 'street') {
+    return `
+      <rect width="${W}" height="${fy}" fill="url(#skyGrad)"/>
+      <rect x="30" y="240" width="140" height="${fy-240}" fill="#fca5a5" stroke="#111827" stroke-width="4"/>
+      <rect x="190" y="185" width="165" height="${fy-185}" fill="#fde68a" stroke="#111827" stroke-width="4"/>
+      <rect x="375" y="260" width="150" height="${fy-260}" fill="#cbd5e1" stroke="#111827" stroke-width="4"/>
+      <rect x="545" y="210" width="145" height="${fy-210}" fill="#fdba74" stroke="#111827" stroke-width="4"/>
+      <!-- Sidewalk & road -->
+      <rect x="0" y="${fy}" width="${W}" height="65" fill="#d6d3d1" stroke="#111827" stroke-width="4"/>
+      <rect x="0" y="${fy+65}" width="${W}" height="${H-fy-65}" fill="#334155"/>
+      <line x1="0" y1="${fy+155}" x2="${W}" y2="${fy+155}" stroke="#facc15" stroke-width="8" stroke-dasharray="45 30"/>
+    `;
+  }
+  if (kind === 'cafe') {
+    let planks = '';
+    for (let y = fy + 10; y < H; y += 44) planks += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#7c5530" stroke-width="3"/>`;
+    return `
+      <rect width="${W}" height="${fy}" fill="#ffedd5"/>
+      <rect x="180" y="200" width="360" height="150" rx="10" fill="#292524" stroke="#78350f" stroke-width="8"/>
+      <text x="360" y="265" text-anchor="middle" font-size="30" font-weight="900" fill="#fde68a">COFFEE • TEA</text>
+      <text x="360" y="308" text-anchor="middle" font-size="20" font-weight="700" fill="#fed7aa">Open Daily</text>
+      <rect x="0" y="${fy-14}" width="${W}" height="24" fill="#8c6d46" stroke="#111827" stroke-width="4"/>
+      <rect x="0" y="${fy+10}" width="${W}" height="${H-fy}" fill="#b58453"/>${planks}
+      <ellipse cx="${W/2}" cy="${fy-45}" rx="150" ry="22" fill="#9a6b3f" stroke="#111827" stroke-width="4"/>
+      <rect x="${W/2-10}" y="${fy-24}" width="20" height="70" fill="#44403c" stroke="#111827" stroke-width="3"/>
+    `;
+  }
+  if (kind === 'classroom') {
+    let planks = '';
+    for (let y = fy + 10; y < H; y += 44) planks += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#7c5530" stroke-width="3"/>`;
+    return `
+      <rect width="${W}" height="${fy}" fill="#ecfdf5"/>
+      <rect x="110" y="205" width="500" height="220" rx="10" fill="#065f46" stroke="#78350f" stroke-width="10"/>
+      <line x1="150" y1="265" x2="420" y2="265" stroke="#a7f3d0" stroke-width="4" stroke-linecap="round"/>
+      <line x1="150" y1="315" x2="360" y2="315" stroke="#a7f3d0" stroke-width="4" stroke-linecap="round"/>
+      <rect x="0" y="${fy-14}" width="${W}" height="24" fill="#8c6d46" stroke="#111827" stroke-width="4"/>
+      <rect x="0" y="${fy+10}" width="${W}" height="${H-fy}" fill="#b58453"/>${planks}
+    `;
+  }
   if (kind === 'split_screen') {
     return `
       <rect x="0" y="0" width="${W/2}" height="${H}" fill="#cbd5e1"/>
@@ -352,6 +391,45 @@ function reactionSVG(kind, lt) {
   return '';
 }
 
+function heldItemSVG(kind, x, y) {
+  if (kind === 'phone') {
+    return `<g transform="translate(${x},${y}) rotate(-12)"><rect x="-12" y="-20" width="24" height="40" rx="4" fill="#1e293b" stroke="#111827" stroke-width="3"/><rect x="-8" y="-14" width="16" height="26" fill="#38bdf8"/></g>`;
+  }
+  if (kind === 'book') {
+    return `<g transform="translate(${x},${y}) rotate(-8)"><rect x="-18" y="-14" width="36" height="28" rx="3" fill="#3b82f6" stroke="#111827" stroke-width="3"/><line x1="0" y1="-14" x2="0" y2="14" stroke="#ffffff" stroke-width="2.5"/></g>`;
+  }
+  if (kind === 'coffee') {
+    return `<g transform="translate(${x},${y})"><rect x="-12" y="-12" width="24" height="26" rx="4" fill="#ffffff" stroke="#111827" stroke-width="3"/><rect x="-12" y="-4" width="24" height="10" fill="#92400e"/></g>`;
+  }
+  return '';
+}
+
+function hairSVG(style, hairColor) {
+  if (style === 'bun') {
+    return `
+      <circle cx="-64" cy="-32" r="22" fill="${hairColor}" stroke="#111827" stroke-width="4.5"/>
+      <path d="M-68,-54 C-66,-142 66,-142 68,-54 C35,-76 12,-76 0,-86 C-12,-76 -35,-76 -68,-54 Z" fill="${hairColor}" stroke="#111827" stroke-width="5" stroke-linejoin="round"/>
+    `;
+  }
+  if (style === 'long') {
+    return `
+      <path d="M-74,-52 L-78,24 Q-62,34 -50,20 L-50,-50 Z" fill="${hairColor}" stroke="#111827" stroke-width="4.5"/>
+      <path d="M74,-52 L78,24 Q62,34 50,20 L50,-50 Z" fill="${hairColor}" stroke="#111827" stroke-width="4.5"/>
+      <path d="M-68,-58 C-70,-142 70,-142 68,-58 C45,-82 22,-78 0,-84 C-22,-78 -45,-82 -68,-58 Z" fill="${hairColor}" stroke="#111827" stroke-width="5" stroke-linejoin="round"/>
+    `;
+  }
+  if (style === 'spiky') {
+    return `<path d="M-66,-62 L-56,-118 L-28,-96 L0,-130 L28,-96 L56,-118 L66,-62 C40,-82 -40,-82 -66,-62 Z" fill="${hairColor}" stroke="#111827" stroke-width="5" stroke-linejoin="round"/>`;
+  }
+  if (style === 'elder') {
+    return `
+      <path d="M-68,-52 C-66,-126 66,-126 68,-52 C52,-76 26,-92 0,-94 C-26,-92 -52,-76 -68,-52 Z" fill="${hairColor}" stroke="#111827" stroke-width="5"/>
+      <path d="M-22,-16 Q0,-26 22,-16 Q0,-10 -22,-16 Z" fill="${hairColor}" stroke="#111827" stroke-width="2.5"/>
+    `;
+  }
+  return `<path d="M-68,-58 C-70,-142 70,-142 68,-58 C45,-82 22,-78 0,-84 C-22,-78 -45,-82 -68,-58 Z" fill="${hairColor}" stroke="#111827" stroke-width="5" stroke-linejoin="round"/>`;
+}
+
 function characterSVG(cfg, actor, lt, mouthAmp, W, H) {
   let cx = actor.x * W;
   if (actor.enter_from === 'left' && lt < 0.45) {
@@ -380,18 +458,24 @@ function characterSVG(cfg, actor, lt, mouthAmp, W, H) {
 
   const shirt = cfg.shirt_color || '#0d9488';
   const hair = cfg.hair_color || '#1f2937';
+  const hairStyle = cfg.hair_style || 'default';
+  const outfit = cfg.outfit || 'default';
+  const seated = actor.pose === 'sit';
   const wave = speaking ? 11 * mouthAmp * Math.sin(lt * 8) : 3 * Math.sin(lt * 2.5);
   const blink = (Math.floor(lt * 10) % 34) === 0;
 
   let arms = '';
+  let handR = {x: 62, y: 78 - wave*0.4};
   if (armPose === 'point_right') {
+    handR = {x: 108, y: 8 + wave};
     arms = `
       <path d="M-40,22 Q-65,50 -62,74" fill="none" stroke="#111827" stroke-width="7" stroke-linecap="round"/>
       <circle cx="-62" cy="76" r="10" fill="#fde6d8" stroke="#111827" stroke-width="3.5"/>
-      <path d="M40,22 Q78,12 ${108},${8+wave}" fill="none" stroke="#111827" stroke-width="7" stroke-linecap="round"/>
+      <path d="M40,22 Q78,12 108,${8+wave}" fill="none" stroke="#111827" stroke-width="7" stroke-linecap="round"/>
       <circle cx="108" cy="${8+wave}" r="10" fill="#fde6d8" stroke="#111827" stroke-width="3.5"/>
     `;
   } else if (armPose === 'raised') {
+    handR = {x: 84, y: -26 - wave};
     arms = `
       <path d="M-40,22 Q-72,-4 -84,${-26+wave}" fill="none" stroke="#111827" stroke-width="7" stroke-linecap="round"/>
       <circle cx="-84" cy="${-26+wave}" r="10" fill="#fde6d8" stroke="#111827" stroke-width="3.5"/>
@@ -406,6 +490,25 @@ function characterSVG(cfg, actor, lt, mouthAmp, W, H) {
       <circle cx="62" cy="${78-wave*0.4}" r="10" fill="#fde6d8" stroke="#111827" stroke-width="3.5"/>
     `;
   }
+  const held = actor.hold ? heldItemSVG(actor.hold, handR.x, handR.y - 12) : '';
+
+  const legs = seated ? `
+    <rect x="-46" y="88" width="92" height="16" rx="5" fill="#78350f" stroke="#111827" stroke-width="4"/>
+    <path d="M-18,96 L-18,125 L12,125 L12,148" fill="none" stroke="#111827" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse cx="18" cy="150" rx="16" ry="9" fill="#111827"/>
+  ` : `
+    <line x1="-18" y1="95" x2="-18" y2="145" stroke="#111827" stroke-width="8" stroke-linecap="round"/>
+    <line x1="18" y1="95" x2="18" y2="145" stroke="#111827" stroke-width="8" stroke-linecap="round"/>
+    <ellipse cx="-22" cy="147" rx="16" ry="9" fill="#111827"/>
+    <ellipse cx="22" cy="147" rx="16" ry="9" fill="#111827"/>
+  `;
+
+  const torsoPath = (outfit === 'dress')
+    ? `M-40,12 Q0,4 40,12 L64,108 Q0,114 -64,108 Z`
+    : `M-42,12 Q0,4 42,12 L54,98 Q0,104 -54,98 Z`;
+  const tieOrBadge = (outfit === 'suit')
+    ? `<polygon points="-6,24 6,24 8,74 0,84 -8,74" fill="#dc2626" stroke="#111827" stroke-width="3"/>`
+    : (outfit === 'coat' ? `<rect x="14" y="38" width="22" height="20" fill="#38bdf8" stroke="#111827" stroke-width="3"/>` : '');
 
   let eyes = '';
   if (blink) {
@@ -447,19 +550,16 @@ function characterSVG(cfg, actor, lt, mouthAmp, W, H) {
     <g transform="translate(${cx},${cy}) scale(${s})" filter="url(#softShadow)">
       <!-- Floor shadow -->
       <ellipse cx="0" cy="154" rx="46" ry="11" fill="#000000" opacity="0.24"/>
-      <!-- Legs & shoes -->
-      <line x1="-18" y1="95" x2="-18" y2="145" stroke="#111827" stroke-width="8" stroke-linecap="round"/>
-      <line x1="18" y1="95" x2="18" y2="145" stroke="#111827" stroke-width="8" stroke-linecap="round"/>
-      <ellipse cx="-22" cy="147" rx="16" ry="9" fill="#111827"/>
-      <ellipse cx="22" cy="147" rx="16" ry="9" fill="#111827"/>
+      ${legs}
       <!-- Torso -->
-      <path d="M-42,12 Q0,4 42,12 L54,98 Q0,104 -54,98 Z" fill="${shirt}" stroke="#111827" stroke-width="5" stroke-linejoin="round"/>
+      <path d="${torsoPath}" fill="${shirt}" stroke="#111827" stroke-width="5" stroke-linejoin="round"/>
       <polygon points="-18,10 0,28 18,10" fill="#ffffff" stroke="#111827" stroke-width="3.5"/>
+      ${tieOrBadge}
       ${arms}
+      ${held}
       <!-- Head -->
       <circle cx="0" cy="-55" r="66" fill="#fde6d8" stroke="#111827" stroke-width="5.5"/>
-      <!-- Hair with cute bangs -->
-      <path d="M-68,-58 C-70,-142 70,-142 68,-58 C45,-82 22,-78 0,-84 C-22,-78 -45,-82 -68,-58 Z" fill="${hair}" stroke="#111827" stroke-width="5" stroke-linejoin="round"/>
+      ${hairSVG(hairStyle, hair)}
       <!-- Rosy cheeks -->
       <ellipse cx="-40" cy="-38" rx="11" ry="6.5" fill="#fca5a5" opacity="0.85"/>
       <ellipse cx="40" cy="-38" rx="11" ry="6.5" fill="#fca5a5" opacity="0.85"/>
