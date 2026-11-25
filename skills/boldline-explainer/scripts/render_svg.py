@@ -6,6 +6,7 @@ import math
 import os
 import re
 import subprocess
+import urllib.request
 import wave
 from pathlib import Path
 
@@ -16,6 +17,51 @@ from PIL import Image
 from playwright.async_api import async_playwright
 
 EDGE_PATH = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+
+OPENMOJI_KEYWORDS = {
+    "sách": "1F4DA", "học": "1F4DA", "táo": "1F34E", "ăn": "1F35A",
+    "nước": "1F4A7", "thuốc": "1F48A", "đồng hồ": "23F0", "nhà": "1F3E0",
+    "máy tính": "1F4BB", "điện thoại": "1F4F1", "xe": "1F68C", "máy bay": "2708",
+    "tiền": "1F4B0", "cảnh báo": "26A0", "tim": "2764", "sao": "2B50",
+}
+
+
+def fetch_openmoji_svg(code: str, cache_dir: Path) -> str:
+    code = code.upper().strip()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    svg_file = cache_dir / f"{code}.svg"
+    if not svg_file.exists():
+        url = f"https://raw.githubusercontent.com/hfg-gmuend/openmoji/master/color/svg/{code}.svg"
+        try:
+            urllib.request.urlretrieve(url, svg_file)
+        except Exception:
+            return ""
+    raw = svg_file.read_text(encoding="utf-8", errors="ignore")
+    # Extract inner SVG content (strip outer <svg ...>...</svg>)
+    m = re.search(r"<svg[^>]*>(.*)</svg>", raw, flags=re.S)
+    return m.group(1) if m else ""
+
+
+def blend_transition(prev_img: Image.Image, cur_img: Image.Image, alpha: float, kind: str) -> Image.Image:
+    W, H = cur_img.size
+    if kind == "slide_left":
+        dx = int(W * (1.0 - alpha))
+        out = prev_img.copy()
+        out.paste(cur_img, (dx, 0))
+        return out
+    if kind == "wipe_up":
+        dy = int(H * (1.0 - alpha))
+        out = prev_img.copy()
+        crop = cur_img.crop((0, dy, W, H))
+        out.paste(crop, (0, dy))
+        return out
+    if kind == "zoom_cut":
+        z = 1.0 + 0.12 * (1.0 - alpha)
+        nw, nh = int(W * z), int(H * z)
+        zoomed = cur_img.resize((nw, nh), Image.Resampling.BILINEAR)
+        x0, y0 = (nw - W) // 2, (nh - H) // 2
+        return Image.blend(prev_img, zoomed.crop((x0, y0, x0 + W, y0 + H)), alpha)
+    return Image.blend(prev_img, cur_img, alpha)
 
 
 def estimate_word_timings(text: str, audio_dur: float) -> list[dict]:
@@ -443,6 +489,8 @@ function propSVG(prop, delay, lt, W, H) {
         <circle cx="-18" cy="-12" r="5" fill="#ffffff" opacity="0.65"/>
       </g>
     `;
+  } else if (prop.openmoji_inner) {
+    inner = `<g transform="translate(-54,-54) scale(1.5)">${prop.openmoji_inner}</g>`;
   }
   return `<g transform="translate(${cx},${cy}) scale(${pop})" filter="url(#softShadow)">${inner}</g>`;
 }
@@ -630,8 +678,28 @@ async def build(script_path: Path, out_path: Path, preview_only: bool):
         stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=ffmpeg_log,
     )
 
+    # Auto-enrich: add emotion_timeline if missing & resolve OpenMoji SVGs
+    om_cache = out_path.parent / ".build_cache" / "openmoji"
+    for idx, sc in enumerate(spec["scenes"]):
+        dur = scene_durs[idx]
+        for actor in sc.get("actors", []):
+            if actor.get("speaking") and not actor.get("emotion_timeline") and dur >= 3.0:
+                actor["emotion_timeline"] = [
+                    {"at": 0.0, "mood": actor.get("mood", "normal"), "arm_pose": actor.get("arm_pose", "point_right")},
+                    {"at": round(dur * 0.45, 2), "mood": "excited", "arm_pose": "raised"},
+                ]
+        for prop in sc.get("props", []):
+            k = prop.get("kind", "")
+            if k.startswith("openmoji:"):
+                prop["openmoji_inner"] = fetch_openmoji_svg(k.split(":", 1)[1], om_cache)
+            elif k == "auto":
+                low = sc.get("text", "").lower()
+                code = next((c for kw, c in OPENMOJI_KEYWORDS.items() if kw in low), "2B50")
+                prop["openmoji_inner"] = fetch_openmoji_svg(code, om_cache)
+
     from io import BytesIO
     dissolve_frames = int(0.25 * FPS)
+    auto_transitions = ["dissolve", "slide_left", "wipe_up", "dissolve", "zoom_cut"]
     prev_last = None
     async with async_playwright() as p:
         browser = await p.chromium.launch(executable_path=EDGE_PATH, headless=True)
@@ -641,6 +709,7 @@ async def build(script_path: Path, out_path: Path, preview_only: bool):
             dur = scene_durs[idx]
             n_frames = int(round(dur * FPS))
             env = frame_rms_envs[idx]
+            trans_kind = sc.get("transition") or auto_transitions[idx % len(auto_transitions)]
             for f_idx in range(n_frames):
                 await page.evaluate("window.renderState", {
                     "W": W, "H": H, "sc": sc, "lt": f_idx / float(FPS), "dur": dur,
@@ -651,7 +720,7 @@ async def build(script_path: Path, out_path: Path, preview_only: bool):
                 png = await page.screenshot(type="png")
                 frame = Image.open(BytesIO(png)).convert("RGB")
                 if prev_last is not None and f_idx < dissolve_frames:
-                    frame = Image.blend(prev_last, frame, (f_idx + 1) / float(dissolve_frames + 1))
+                    frame = blend_transition(prev_last, frame, (f_idx + 1) / float(dissolve_frames + 1), trans_kind)
                 proc.stdin.write(frame.tobytes())
                 if f_idx == n_frames - 1:
                     prev_last = frame
