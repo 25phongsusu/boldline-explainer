@@ -49,7 +49,13 @@ You are a programmatic 2D animation director and asset builder. Given a topic, b
 
 Whenever you generate a new JSON script from a user topic, you MUST enforce these rules **while writing the script** (not just at render time):
 
-1. **1 Beat = 1 Concrete Visual**: Never leave a content scene with just a character standing next to a text pill. Map every key noun/verb in the narration to at least one illustrative `prop`, `polaroid`, or `arrow`. If `scripts/render_video.py` does not yet have a prop for the new topic, **write a new `draw_prop` branch** (or embed an OpenMoji / Open Peeps asset) before rendering.
+1. **Director & Storytelling Logic (Story-First, Never Mechanical)**:
+   - **Every visual choice must serve the sentence's meaning**—never force a feature just to tick a checklist.
+   - **`split_screen` is ONLY for true 2-sided contrasts**: Left (grey) = Problem / Fake / Bad; Right (warm) = Solution / Real / Good. Never put a happy character or celebration on the grey left side.
+   - **Use `callout` sparingly** (1–2 per video max) only for genuinely punchy numbers or plot twists (`15 PHÚT`, `90%`, `GIẢ MẠO!`).
+   - **Match `reaction` strictly to emotion**: `question` = confusion, `sweat` = shock/worry, `lightbulb` = realization/plan, `heart` = warmth/bonding.
+   - **Match `background` & `bgm_mood` to tone**: tension/warning → `spotlight` / `dark_card` (`tense`); investigation/work → `living_office`; relief/family/outdoors → `forest_hills` / `kids_room` (`bright`).
+2. **1 Beat = 1 Concrete Visual**: Never leave a content scene with just a character standing next to a text pill. Map every key noun/verb in the narration to at least one illustrative `prop`, `polaroid`, or `arrow`. If `scripts/render_video.py` does not yet have a prop for the new topic, **write a new `draw_prop` branch** (or embed an OpenMoji / Open Peeps asset) before rendering.
 2. **Scene & Camera Cadence**:
    - Alternate `background` every content scene (never repeat the same background back-to-back).
    - Alternate framing between wide (`scale: 0.90`, 2 actors or actor + props) and medium close-up (`scale: 1.18–1.25`).
