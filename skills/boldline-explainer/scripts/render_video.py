@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import hashlib
 import json
 import math
 import os
@@ -50,9 +51,10 @@ def estimate_word_timings(text: str, audio_dur: float) -> list[dict]:
 
 
 async def gen_tts_for_scene(sc: dict, voice: str, lang: str, work_dir: Path):
-    mp3_path = work_dir / f"scene_{sc['id']}.mp3"
-    wav_path = work_dir / f"scene_{sc['id']}.wav"
-    words_path = work_dir / f"scene_{sc['id']}_words.json"
+    text_sig = hashlib.sha256(f"{voice}|{lang}|{sc['text']}".encode("utf-8")).hexdigest()[:10]
+    mp3_path = work_dir / f"scene_{sc['id']}_{text_sig}.mp3"
+    wav_path = work_dir / f"scene_{sc['id']}_{text_sig}.wav"
+    words_path = work_dir / f"scene_{sc['id']}_{text_sig}_words.json"
 
     if wav_path.exists() and wav_path.stat().st_size > 1000 and words_path.exists():
         with wave.open(str(wav_path), "rb") as w:
@@ -552,7 +554,7 @@ async def build(script_path: Path, out_path: Path, preview_only: bool, allow_sim
     FPS = int(spec.get("fps", 30))
     voice = spec.get("voice", "vi-VN-NamMinhNeural")
     lang = spec.get("lang", "vi")
-    work_dir = out_path.parent / ".build_cache"
+    work_dir = out_path.parent / ".build_cache" / out_path.stem
     work_dir.mkdir(parents=True, exist_ok=True)
 
     sr = 44100
